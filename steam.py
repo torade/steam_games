@@ -1,8 +1,10 @@
 import requests
 import json
+import os
 
 # Your Steam Web API Key
 STEAM_API_KEY = "7D3524268C7892917F37673A0DB6489F"
+CACHE_FILE = "game_cache.json"
 
 def resolve_vanity_url(vanity_url):
     """
@@ -50,3 +52,56 @@ def get_owned_games(steam_id):
     except requests.exceptions.RequestException as e:
         print(f"An error occurred while fetching owned games: {e}")
         return None
+
+def get_game_details(appid):
+    """
+    Fetches details for a specific game from the Steam Store API or local cache.
+    :param appid: The Steam Application ID.
+    :return: A dictionary of game details (categories, genres), or None.
+    """
+    # 1. Load existing cache
+    cache = {}
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, "r", encoding="utf-8") as f:
+                cache = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            cache = {}
+
+    appid_str = str(appid)
+    
+    # 2. Check if game is in cache
+    if appid_str in cache:
+        return cache[appid_str]
+
+    # 3. If not in cache, fetch from API
+    url = "https://store.steampowered.com/api/appdetails"
+    params = {"appids": appid}
+    
+    try:
+        response = requests.get(url, params=params)
+        if response.status_code == 200:
+            data = response.json()
+            # API structure: { "appid": { "success": true, "data": {...} } }
+            if data and appid_str in data:
+                app_data = data[appid_str]
+                if app_data.get("success"):
+                    game_data = app_data.get("data", {})
+                    
+                    # Extract relevant fields
+                    details = {
+                        "name": game_data.get("name"),
+                        "categories": game_data.get("categories", []),
+                        "genres": game_data.get("genres", [])
+                    }
+                    
+                    # 4. Save to cache
+                    cache[appid_str] = details
+                    with open(CACHE_FILE, "w", encoding="utf-8") as f:
+                        json.dump(cache, f, indent=4)
+                        
+                    return details
+    except requests.RequestException as e:
+        print(f"Error fetching details for appid {appid}: {e}")
+
+    return None
