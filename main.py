@@ -234,7 +234,7 @@ def main():
     friend_libraries = []
     
     while True:
-        add_friend = input("\nDo you want to add a friend to compare games with? (yes/no): ").strip().lower()
+        add_friend = input("\nDo you want to add a NEW friend to compare games with? (yes/no): ").strip().lower()
         if add_friend != 'yes':
             break
             
@@ -247,9 +247,47 @@ def main():
         else:
             print("Failed to add friend or fetch their library.")
 
+    # Check for existing cached friends if user didn't add any new ones (or wants to add more from cache)
+    existing_caches = [f for f in os.listdir(CACHE_DIR) if f.endswith('.json') and f != 'main_user.json' and f != 'game_cache.json']
+    
+    if existing_caches:
+        print(f"\nFound {len(existing_caches)} previously cached friends.")
+        use_cached = input("Do you want to select from previously cached friends? (yes/no): ").strip().lower()
+        
+        if use_cached == 'yes':
+            print("\nAvailable friends:")
+            for idx, filename in enumerate(existing_caches):
+                # Extract name from filename (games_NAME.json)
+                name = filename.replace("games_", "").replace(".json", "")
+                print(f"{idx + 1}. {name}")
+            
+            selection = input("Enter the numbers of friends to add (comma separated, e.g., 1,3) or 'all': ").strip().lower()
+            
+            selected_files = []
+            if selection == 'all':
+                selected_files = existing_caches
+            else:
+                try:
+                    indices = [int(x.strip()) - 1 for x in selection.split(',')]
+                    for i in indices:
+                        if 0 <= i < len(existing_caches):
+                            selected_files.append(existing_caches[i])
+                except ValueError:
+                    print("Invalid input.")
+
+            for filename in selected_files:
+                full_path = os.path.join(CACHE_DIR, filename)
+                try:
+                    with open(full_path, 'r') as f:
+                        lib = json.load(f)
+                        friend_libraries.append(lib)
+                        print(f"Loaded {filename}")
+                except json.JSONDecodeError:
+                    print(f"Error loading {filename}")
+
     # 3. Common Games Feature
     if friend_libraries:
-        check_common = input("\nDo you want to check common games with your added friends? (yes/no): ").strip().lower()
+        check_common = input("\nDo you want to check common games with selected friends? (yes/no): ").strip().lower()
         if check_common == 'yes':
             print("\n--- Common Games Feature ---")
             
