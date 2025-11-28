@@ -2,51 +2,96 @@ import re
 import time
 import json
 import os
-from steam import resolve_vanity_url, get_owned_games, get_game_details
+from steam import resolve_vanity_url, get_owned_games, get_game_details, save_cache
 from recommender import find_coop, find_cute_relaxing, find_by_genre
 
-CACHE_FILE = "game_cache.json"
+CACHE_DIR = "users_cache"
 
-def find_common_games(steam_id_list, library_data=None, filter_func=None):
+def get_user_data(profile_url, update_prompt=True, custom_cache_name=None, force_update=False):
     """
-    Fetches owned games for all provided Steam IDs and returns games owned by everyone.
+    Helper function to resolve SteamID, handle caching, and fetch data for a user.
+    Returns tuple: (steam_id, library_data, vanity_name_or_id)
+    """
+    print(f"Attempting to process profile URL: {profile_url}")
+    vanity_match = re.search(r"steamcommunity.com/id/([^/]+)", profile_url)
+    profile_match = re.search(r"steamcommunity.com/profiles/(\d+)", profile_url)
+
+    steam_id = None
+    identifier = None
+    cache_filename = None
+
+    if vanity_match:
+        identifier = vanity_match.group(1)
+        print(f"Found vanity name: {identifier}")
+        steam_id = resolve_vanity_url(identifier)
+    elif profile_match:
+        identifier = profile_match.group(1)
+        steam_id = identifier
+        print(f"Found SteamID: {steam_id}")
+    else:
+        print("Could not parse SteamID or vanity name from URL.")
+        return None, {}, None
+
+    if custom_cache_name:
+        cache_filename = os.path.join(CACHE_DIR, custom_cache_name)
+    else:
+        cache_filename = os.path.join(CACHE_DIR, f"games_{identifier}.json")
+
+    if not steam_id:
+        print("Could not resolve SteamID.")
+        return None, {}, None
+
+    library_data = {}
+    update_library = False
+    
+    if force_update:
+        update_library = True
+    elif update_prompt:
+        response = input(f"Do you want to update library for {os.path.basename(cache_filename)}? (yes/no): ").strip().lower()
+        update_library = response == 'yes'
+    else:
+        response = input(f"Do you want to update library for friend ({identifier})? (yes/no): ").strip().lower()
+        update_library = response == 'yes'
+
+    # Check cache
+    if os.path.exists(cache_filename) and os.path.getsize(cache_filename) > 0 and not update_library:
+        print(f"Loading games from cache ({cache_filename})...")
+        try:
+            with open(cache_filename, 'r') as f:
+                library_data = json.load(f)
+        except json.JSONDecodeError:
+            print("Error reading cache file.")
+            library_data = {}
+
+    # Fetch from API if needed
+    if not library_data:
+        library_data = steam_api_caller(steam_id)
+        # Save to cache
+        with open(cache_filename, 'w') as f:
+            json.dump(library_data, f, indent=4)
+            print(f"Saved data to {cache_filename}")
+
+    return steam_id, library_data, identifier
+
+def find_common_games(libraries, filter_func=None):
+    """
+    Finds games present in all provided library dictionaries.
     
     Args:
-        steam_id_list (list): List of SteamID strings.
-        library_data (dict): Optional local cache of game details to enrich results.
-        filter_func (function): Optional function to filter the resulting list (e.g., find_coop).
+        libraries (list): List of dictionaries where keys are AppIDs and values are game details.
+        filter_func (function): Optional function to filter the resulting list.
     """
-    if not steam_id_list:
+    if not libraries:
         return []
 
-    print(f"Finding common games for {len(steam_id_list)} users...")
+    print(f"Finding common games across {len(libraries)} libraries...")
     
-    # Sets to store appids for intersection
-    common_appids = None
+    # Start with the keys (AppIDs) from the first library (usually main user)
+    common_appids = set(libraries[0].keys())
     
-    # Dictionary to store basic game info (name) from the API responses
-    game_info_map = {}
-
-    for steam_id in steam_id_list:
-        print(f"Fetching games for SteamID: {steam_id}")
-        games = get_owned_games(steam_id)
-        
-        if games is None:
-            print(f"Could not fetch games for {steam_id}. Skipping intersection for this user (or aborting).")
-            return []
-            
-        current_appids = set()
-        for g in games:
-            appid = str(g['appid'])
-            current_appids.add(appid)
-            # Keep track of names
-            if appid not in game_info_map:
-                game_info_map[appid] = g['name']
-        
-        if common_appids is None:
-            common_appids = current_appids
-        else:
-            common_appids = common_appids.intersection(current_appids)
+    # Intersect with keys from all other libraries
+    for lib in libraries[1:]:
+        common_appids.intersection_update(lib.keys())
             
     if not common_appids:
         print("No common games found.")
@@ -54,23 +99,21 @@ def find_common_games(steam_id_list, library_data=None, filter_func=None):
 
     print(f"Found {len(common_appids)} common AppIDs.")
 
-    # Construct the result list. 
-    # If we have library_data (cache), we use it to get full details (categories, genres).
-    # Otherwise, we just return the basic name from the ownership check.
+    # Construct the result list using details from the first library
+    # (Assuming the first library is the main user and has full details)
     result_games = []
+    main_lib = libraries[0]
     
     for appid in common_appids:
-        if library_data and appid in library_data:
-            result_games.append(library_data[appid])
+        if appid in main_lib:
+            result_games.append(main_lib[appid])
         else:
-            # Fallback to basic info if not in cache
-            result_games.append({'appid': appid, 'name': game_info_map.get(appid, "Unknown")})
+            # Fallback if for some reason it's in keys but not accessible (unlikely)
+            result_games.append({'name': f"AppID {appid}", 'categories': [], 'genres': []})
 
     # Apply optional filter
     if filter_func:
         print("Applying filter...")
-        # Note: Filters in recommender.py expect a list of game dicts with 'categories'/'genres'
-        # If the game isn't in library_data, filters might fail or return nothing.
         result_games = filter_func(result_games)
 
     return result_games
@@ -109,67 +152,64 @@ def steam_api_caller(steam_id):
         
         # Sleep briefly to be polite to the API (avoid Rate Limiting)
         time.sleep(0.1)
+    
+    # Save the global game details cache
+    save_cache()
         
     return games_data
 
+def find_multiplayer_coop(games):
+    """
+    Filters list of games for those with Multi-player or Co-op categories.
+    """
+    result = []
+    for game in games:
+        categories = [c.get('description') for c in game.get('categories', [])]
+        if "Multi-player" in categories or "Co-op" in categories or "Online Co-op" in categories:
+            result.append(game)
+    return result
+
 def main():
-    # Example usage with a profile URL.
-    profile_url = "https://steamcommunity.com/id/sadade00/" # replace this with any valid steam profile
-    
-    library_data = {}
-    steam_id = None  # Initialize steam_id here
+    # Ensure cache directory exists
+    if not os.path.exists(CACHE_DIR):
+        os.makedirs(CACHE_DIR)
+        print(f"Created cache directory: {CACHE_DIR}")
 
-    # Resolve SteamID first so it's available for common games check later
-    print(f"Attempting to process profile URL: {profile_url}")
-    # Try to extract vanity name or profile ID from URL
-    vanity_match = re.search(r"steamcommunity.com/id/([^/]+)", profile_url)
-    profile_match = re.search(r"steamcommunity.com/profiles/(\d+)", profile_url)
+    # 1. Process Main User
+    main_cache_path = os.path.join(CACHE_DIR, "main_user.json")
+    main_library_data = {}
+    main_steam_id = None
 
-    if vanity_match:
-        vanity_name = vanity_match.group(1)
-        print(f"Found vanity name: {vanity_name}")
-        steam_id = resolve_vanity_url(vanity_name)
-    elif profile_match:
-        steam_id = profile_match.group(1)
-        print(f"Found SteamID: {steam_id}")
+    if os.path.exists(main_cache_path):
+        print("Found existing main user cache.")
+        if input("Do you want to update it? (yes/no): ").strip().lower() == 'yes':
+            profile_url = input("Please enter your Steam profile URL: ").strip()
+            main_steam_id, main_library_data, main_identifier = get_user_data(profile_url, custom_cache_name="main_user.json", force_update=True)
+        else:
+            print(f"Loading games from cache ({main_cache_path})...")
+            try:
+                with open(main_cache_path, 'r') as f:
+                    main_library_data = json.load(f)
+                main_steam_id = "CachedUser" # Placeholder since we loaded from cache
+            except json.JSONDecodeError:
+                print("Error reading cache file.")
     else:
-        print("Could not parse SteamID or vanity name from URL.")
+        profile_url = input("Please enter your Steam profile URL: ").strip()
+        main_steam_id, main_library_data, main_identifier = get_user_data(profile_url, custom_cache_name="main_user.json")
     
-    # Ask user if they want to update the library
-    response = input("Do you want to update library? (yes/no): ").strip().lower()
-    update_library = response == 'yes'
+    if not main_steam_id:
+        return
 
-    # Check if cache exists and is not empty
-    if os.path.exists(CACHE_FILE) and os.path.getsize(CACHE_FILE) > 0 and not update_library:
-        print("Loading games from cache...")
-        try:
-            with open(CACHE_FILE, 'r') as f:
-                library_data = json.load(f)
-        except json.JSONDecodeError:
-            print("Error reading cache file.")
-            library_data = {}
-
-    # If no cache or update requested, fetch from API
-    if not library_data:
-        if steam_id:
-            library_data = steam_api_caller(steam_id)
-            # Save to cache
-            with open(CACHE_FILE, 'w') as f:
-                json.dump(library_data, f, indent=4)
-    
-    if library_data:
-        print(f"\nLibrary contains {len(library_data)} games.")
+    if main_library_data:
+        print(f"\nLibrary contains {len(main_library_data)} games.")
         print("Here are some of your games:")
-        # Sort by name
-        sorted_games = sorted(library_data.values(), key=lambda x: x['name'])
+        sorted_games = sorted(main_library_data.values(), key=lambda x: x['name'])
         for game in sorted_games[:15]:
             print(f"- {game['name']}")
 
         # --- Recommender Demonstrations ---
         print("\n--- Recommender Demonstrations ---")
-        
-        # Convert dictionary values to a list for the recommender functions
-        games_list = list(library_data.values())
+        games_list = list(main_library_data.values())
 
         # 1. Co-op
         coop_games = find_coop(games_list)
@@ -183,35 +223,48 @@ def main():
         for game in cute_games[:5]:
             print(f"- {game['name']}")
 
-        # 3. Genre Search (e.g., Action)
+        # 3. Genre Search
         search_genre = "Action"
         action_games = find_by_genre(games_list, search_genre)
         print(f"\nFound {len(action_games)} games with genre '{search_genre}':")
         for game in action_games[:5]:
             print(f"- {game['name']}")
 
-        # 4. Common Games Feature (Discord Friends)
-        print("\n--- Common Games Feature ---")
-        # Example Steam IDs (Replace these with real friend IDs to test)
-        # Using the main user's ID and another random one or hardcoded for demo
-        # Note: You need valid SteamIDs here. 
-        friend_steam_ids = []
-        if steam_id:
-            friend_steam_ids.append(steam_id)
+    # 2. Add Friends Logic
+    friend_libraries = []
+    
+    while True:
+        add_friend = input("\nDo you want to add a friend to compare games with? (yes/no): ").strip().lower()
+        if add_friend != 'yes':
+            break
+            
+        friend_url = input("Enter friend's Steam profile URL: ").strip()
+        f_steam_id, f_library, f_ident = get_user_data(friend_url)
         
-        # Add friend's ID
-        friend_steam_ids.append("76561199079722983") #example friend ID (CAN REPLACE)
+        if f_steam_id and f_library:
+            friend_libraries.append(f_library)
+            print(f"Added friend: {f_ident} ({f_steam_id})")
+        else:
+            print("Failed to add friend or fetch their library.")
 
-        if len(friend_steam_ids) > 0:
-            # Find common games
-            common = find_common_games(friend_steam_ids, library_data)
+    # 3. Common Games Feature
+    if friend_libraries:
+        check_common = input("\nDo you want to check common games with your added friends? (yes/no): ").strip().lower()
+        if check_common == 'yes':
+            print("\n--- Common Games Feature ---")
+            
+            # Combine main user library and friend libraries
+            all_libraries = [main_library_data] + friend_libraries
+            
+            # Find common games using the cached data
+            common = find_common_games(all_libraries)
             print(f"Common games count: {len(common)}")
             
-            # Bonus: Filter for Co-op among common games
-            print("Filtering for common Co-op games...")
-            common_coop = find_common_games(friend_steam_ids, library_data, filter_func=find_coop)
-            print(f"Found {len(common_coop)} common Co-op games:")
-            for game in common_coop[:5]:
+            # Bonus: Filter for Multiplayer/Co-op among common games
+            print("Filtering for common Multiplayer & Co-op games...")
+            common_multi = find_common_games(all_libraries, filter_func=find_multiplayer_coop)
+            print(f"Found {len(common_multi)} common Multiplayer & Co-op games:")
+            for game in common_multi[:5]:
                 print(f"- {game['name']}")
 
 if __name__ == "__main__":

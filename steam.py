@@ -6,6 +6,28 @@ import os
 STEAM_API_KEY = "7D3524268C7892917F37673A0DB6489F"
 CACHE_FILE = "game_cache.json"
 
+# Global cache variable
+GAME_CACHE = {}
+
+# Load cache once when script starts
+if os.path.exists(CACHE_FILE):
+    try:
+        with open(CACHE_FILE, "r", encoding="utf-8") as f:
+            GAME_CACHE = json.load(f)
+    except (json.JSONDecodeError, IOError):
+        GAME_CACHE = {}
+
+def save_cache():
+    """
+    Saves the current state of GAME_CACHE to the JSON file.
+    Call this manually after batch processing games.
+    """
+    try:
+        with open(CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(GAME_CACHE, f, indent=4)
+    except IOError as e:
+        print(f"Error saving cache: {e}")
+
 def resolve_vanity_url(vanity_url):
     """
     Resolves a Steam vanity URL to a 64-bit Steam ID.
@@ -59,22 +81,13 @@ def get_game_details(appid):
     :param appid: The Steam Application ID.
     :return: A dictionary of game details (categories, genres), or None.
     """
-    # 1. Load existing cache
-    cache = {}
-    if os.path.exists(CACHE_FILE):
-        try:
-            with open(CACHE_FILE, "r", encoding="utf-8") as f:
-                cache = json.load(f)
-        except (json.JSONDecodeError, IOError):
-            cache = {}
-
     appid_str = str(appid)
     
-    # 2. Check if game is in cache
-    if appid_str in cache:
-        return cache[appid_str]
+    # Check global memory cache
+    if appid_str in GAME_CACHE:
+        return GAME_CACHE[appid_str]
 
-    # 3. If not in cache, fetch from API
+    # If not in cache, fetch from API
     url = "https://store.steampowered.com/api/appdetails"
     params = {"appids": appid}
     
@@ -95,10 +108,8 @@ def get_game_details(appid):
                         "genres": game_data.get("genres", [])
                     }
                     
-                    # 4. Save to cache
-                    cache[appid_str] = details
-                    with open(CACHE_FILE, "w", encoding="utf-8") as f:
-                        json.dump(cache, f, indent=4)
+                    # Update memory cache (do not save to file yet)
+                    GAME_CACHE[appid_str] = details
                         
                     return details
     except requests.RequestException as e:
