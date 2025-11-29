@@ -182,7 +182,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("👥 Co-op", callback_data="coop"),
         ],
         [
-            InlineKeyboardButton("💖 Relaxing", callback_data="cute"),
+            InlineKeyboardButton("📂 Category / Genre", callback_data="category_menu"),
             InlineKeyboardButton("🎲 Random Pick", callback_data="random"),
         ],
         [
@@ -204,6 +204,29 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     return MAIN_MENU
 
+async def show_category_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Displays the category submenu."""
+    keyboard = [
+        [
+            InlineKeyboardButton("👤 Singleplayer", callback_data="cat_single"),
+            InlineKeyboardButton("👥 Multiplayer", callback_data="cat_multi"),
+        ],
+        [
+            InlineKeyboardButton("⚔️ RPG", callback_data="cat_rpg"),
+            InlineKeyboardButton("💖 Cute & Relaxing", callback_data="cat_cute"),
+        ],
+        [
+            InlineKeyboardButton("👻 Horror", callback_data="cat_horror"),
+        ],
+        [
+            InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back"),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    query = update.callback_query
+    await query.edit_message_text(text="Select a category or genre:", reply_markup=reply_markup)
+    return MAIN_MENU
+
 async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles button clicks from the main menu."""
     query = update.callback_query
@@ -221,6 +244,8 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await show_results_page(update, context)
     elif data == "back":
         return await show_main_menu(update, context)
+    elif data == "category_menu":
+        return await show_category_menu(update, context)
     
     # Handle Profile Change
     if data == "change_profile":
@@ -240,8 +265,16 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         results = suggest_short_games(library, max_minutes=60)
     elif data == "coop":
         results = find_coop(library)
-    elif data == "cute":
+    elif data == "cat_cute":
         results = find_cute_relaxing(library)
+    elif data == "cat_single":
+        results = [g for g in library if any(c.get('description') == 'Single-player' for c in g.get('categories', []))]
+    elif data == "cat_multi":
+        results = [g for g in library if any(c.get('description') == 'Multi-player' for c in g.get('categories', []))]
+    elif data == "cat_rpg":
+        results = find_by_genre(library, "RPG")
+    elif data == "cat_horror":
+        results = find_by_genre(library, "Horror")
     elif data == "random":
         if library:
             results = [random.choice(library)]
