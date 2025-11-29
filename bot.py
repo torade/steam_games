@@ -13,9 +13,10 @@ from telegram.ext import (
 from steam import resolve_vanity_url, get_owned_games, get_game_details
 from recommender import find_coop, find_cute_relaxing, find_by_genre
 import re
+from API_keys import TELEGRAM_TOKEN
 
 # --- Configuration ---
-TOKEN = "8493785994:AAHFydSXKNj2BQ4lf_tkdTPgNmcLy48g6FM"  # Replace with your actual token
+TOKEN = TELEGRAM_TOKEN
 
 # --- States for ConversationHandler ---
 WAITING_FOR_URL, MAIN_MENU = range(2)

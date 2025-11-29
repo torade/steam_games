@@ -1,9 +1,7 @@
 import requests
 import json
 import os
-
-# REPLACE WITH OWN STEAM API KEY
-STEAM_API_KEY = "7D3524268C7892917F37673A0DB6489F"
+from API_keys import STEAM_API_KEY
 CACHE_FILE = "game_cache.json"
 
 def resolve_vanity_url(vanity_url):
