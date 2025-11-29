@@ -2,7 +2,7 @@
 
 # Replace with your actual Gemini API key
 # Get your key from: https://makersuite.google.com/app/apikey
-GEMINI_API_KEY = ""
+GEMINI_API_KEY = "AIzaSyDbABynYQi3fbeSfACCVu4OI2D1NSY3aL4"
 
 # System prompt that defines how Gemini should behave
 SYSTEM_PROMPT = """You are a helpful Steam library assistant. You have access to the user's complete Steam game library including game names, genres, and categories.

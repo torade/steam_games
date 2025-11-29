@@ -2,7 +2,7 @@ import requests
 import json
 import os
 
-# Your Steam Web API Key
+# REPLACE WITH OWN STEAM API KEY
 STEAM_API_KEY = "7D3524268C7892917F37673A0DB6489F"
 CACHE_FILE = "game_cache.json"
 
@@ -22,7 +22,7 @@ def resolve_vanity_url(vanity_url):
         response.raise_for_status()
         data = response.json()
         if data.get("response", {}).get("success") == 1:
-            return data["response"]["steamid"]
+            return data["response"]["steamid"] # Return the resolved SteamID
         else:
             print(f"Could not resolve vanity URL '{vanity_url}'. Response: {data}")
             return None
@@ -40,8 +40,8 @@ def get_owned_games(steam_id):
     params = {
         "key": STEAM_API_KEY,
         "steamid": steam_id,
-        "include_appinfo": 1,  # To get game names
-        "include_played_free_games": 1,
+        "include_appinfo": 1, # true
+        "include_played_free_games": 1, # true
         "format": "json"
     }
     try:
@@ -53,13 +53,13 @@ def get_owned_games(steam_id):
         print(f"An error occurred while fetching owned games: {e}")
         return None
 
-def get_game_details(appid):
+def get_game_details(appid): #steam store API is public => no key needed BUT multiple requests might get blocked => use caching
     """
     Fetches details for a specific game from the Steam Store API or local cache.
     :param appid: The Steam Application ID.
     :return: A dictionary of game details (categories, genres), or None.
     """
-    # 1. Load existing cache
+    # 1. Try loading existing cache
     cache = {}
     if os.path.exists(CACHE_FILE):
         try:
@@ -92,7 +92,10 @@ def get_game_details(appid):
                     details = {
                         "name": game_data.get("name"),
                         "categories": game_data.get("categories", []),
-                        "genres": game_data.get("genres", [])
+                        "genres": game_data.get("genres", []),
+                        "short_description": game_data.get("short_description", ""),
+                        "reviews": game_data.get("reviews", ""),
+                        "price_overview": game_data.get("price_overview", {})
                     }
                     
                     # 4. Save to cache

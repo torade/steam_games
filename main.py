@@ -2,10 +2,9 @@ import re
 import time
 import json
 import os
-from steam import resolve_vanity_url, get_owned_games, get_game_details
+from steam import resolve_vanity_url, get_owned_games, get_game_details, CACHE_FILE
 from recommender import find_coop, find_cute_relaxing, find_by_genre
 
-CACHE_FILE = "game_cache.json"
 
 def find_common_games(steam_id_list, library_data=None, filter_func=None):
     """
@@ -171,48 +170,7 @@ def main():
         # Convert dictionary values to a list for the recommender functions
         games_list = list(library_data.values())
 
-        # 1. Co-op
-        coop_games = find_coop(games_list)
-        print(f"\nFound {len(coop_games)} Co-op games:")
-        for game in coop_games[:5]:
-            print(f"- {game['name']}")
 
-        # 2. Cute/Relaxing
-        cute_games = find_cute_relaxing(games_list)
-        print(f"\nFound {len(cute_games)} Cute/Relaxing games:")
-        for game in cute_games[:5]:
-            print(f"- {game['name']}")
-
-        # 3. Genre Search (e.g., Action)
-        search_genre = "Action"
-        action_games = find_by_genre(games_list, search_genre)
-        print(f"\nFound {len(action_games)} games with genre '{search_genre}':")
-        for game in action_games[:5]:
-            print(f"- {game['name']}")
-
-        # 4. Common Games Feature (Discord Friends)
-        print("\n--- Common Games Feature ---")
-        # Example Steam IDs (Replace these with real friend IDs to test)
-        # Using the main user's ID and another random one or hardcoded for demo
-        # Note: You need valid SteamIDs here. 
-        friend_steam_ids = []
-        if steam_id:
-            friend_steam_ids.append(steam_id)
-        
-        # Add friend's ID
-        friend_steam_ids.append("76561199079722983") #example friend ID (CAN REPLACE)
-
-        if len(friend_steam_ids) > 0:
-            # Find common games
-            common = find_common_games(friend_steam_ids, library_data)
-            print(f"Common games count: {len(common)}")
-            
-            # Bonus: Filter for Co-op among common games
-            print("Filtering for common Co-op games...")
-            common_coop = find_common_games(friend_steam_ids, library_data, filter_func=find_coop)
-            print(f"Found {len(common_coop)} common Co-op games:")
-            for game in common_coop[:5]:
-                print(f"- {game['name']}")
 
         # --- NEW: Gemini Chat Option ---
         print("\n" + "="*60)
