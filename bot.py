@@ -28,13 +28,11 @@ logger = logging.getLogger(__name__)
 
 #================== HELPER FUNCTIONS ==================
 
-def suggest_short_games(library_data, max_minutes=60): #COMPLETELY WRONG!! --- no dataset for this, so use GEMINI to suggest from library
+def suggest_short_games(library_data, max_minutes=60): 
     """
     Filter for games with playtime under a certain limit (e.g., 1 hour).
     Note: playtime_forever is in minutes.
     """
-    # Filter games that have been played but less than max_minutes
-    # Or games that haven't been played (0 minutes)
     return [
         g for g in library_data 
         if g.get('playtime_forever', 0) <= max_minutes
@@ -50,11 +48,71 @@ async def enrich_library_data(owned_games): # owned games get more details from 
         if details:
             game_copy['categories'] = details.get('categories', [])
             game_copy['genres'] = details.get('genres', [])
-            game_copy['price_overview'] = details.get('price_overview', {})
-            game_copy['short_description'] = details.get('short_description', "")
-            game_copy['reviews'] = details.get('reviews', "")
+            # Updated to match steam.py's new output structure
+            game_copy['price_str'] = details.get('price_str', "N/A")
+            game_copy['score'] = details.get('score', "N/A")
+            game_copy['desc'] = details.get('desc', "")
         enriched_library.append(game_copy)
     return enriched_library
+
+async def show_results_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Helper to display a page of results."""
+    query = update.callback_query
+    results = context.user_data.get('current_results', [])
+    page = context.user_data.get('current_page', 0)
+    ITEMS_PER_PAGE = 5
+    
+    if not results:
+        await query.edit_message_text(
+            text="No matching games found in your library.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Menu", callback_data="back")]])
+        )
+        return
+
+    # Calculate total pages
+    total_pages = (len(results) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+    
+    # Ensure page is valid
+    if page < 0: page = 0
+    if page >= total_pages: page = total_pages - 1
+    
+    # Slice data
+    start_idx = page * ITEMS_PER_PAGE
+    end_idx = start_idx + ITEMS_PER_PAGE
+    current_batch = results[start_idx:end_idx]
+    
+    # Build Message
+    response_text = f"**Found {len(results)} games (Page {page + 1}/{total_pages}):**\n\n"
+    
+    for game in current_batch:
+        name = game.get('name', 'Unknown')
+        playtime = round(game.get('playtime_forever', 0) / 60, 1)
+        
+        # Extract category descriptions
+        categories = [c.get('description') for c in game.get('categories', [])]
+        categories_str = ", ".join(categories[:3]) if categories else "N/A"
+        
+        response_text += f"*{name}*\n"
+        response_text += f"_{categories_str} | {playtime} hrs_\n\n"
+
+    # Build Navigation Buttons
+    buttons = []
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("⬅️ Previous", callback_data="prev_page"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton("Next ➡️", callback_data="next_page"))
+    
+    if nav_row:
+        buttons.append(nav_row)
+        
+    buttons.append([InlineKeyboardButton("🔙 Back to Menu", callback_data="back")])
+    
+    await query.edit_message_text(
+        text=response_text, 
+        reply_markup=InlineKeyboardMarkup(buttons), 
+        parse_mode='Markdown'
+    )
 
 # --- Bot Command Handlers ---
 
@@ -78,10 +136,6 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Validates URL and fetches library."""
     url = update.message.text.strip()
     
-    """ Extract vanity name or ID (Simple logic, relying on steam.py mostly)
-    !! resolve_vanity_url expects just the name, not the full URL,
-    but we parse it here for user convenience."""
-
     vanity_match = re.search(r"steamcommunity.com/id/([^/]+)", url)
     profile_match = re.search(r"steamcommunity.com/profiles/(\d+)", url)
     
@@ -124,7 +178,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Displays the main menu options."""
     keyboard = [
         [
-            InlineKeyboardButton("⏱️ Max 1 Hour", callback_data="short"), #CHANGE THIS OPTION TO HAVE MULTIPLE OPTIONS LATER (30 mins, 1 hour, etc.)
+            InlineKeyboardButton("⏱️ Max 1 Hour", callback_data="short"),
             InlineKeyboardButton("👥 Co-op", callback_data="coop"),
         ],
         [
@@ -158,71 +212,59 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     library = context.user_data.get('library', [])
     
-    if not library and data != "change_profile":
+    # Handle Navigation
+    if data == "next_page":
+        context.user_data['current_page'] += 1
+        return await show_results_page(update, context)
+    elif data == "prev_page":
+        context.user_data['current_page'] -= 1
+        return await show_results_page(update, context)
+    elif data == "back":
+        return await show_main_menu(update, context)
+    
+    # Handle Profile Change
+    if data == "change_profile":
+        context.user_data.clear()
+        await query.edit_message_text("⚙️ Profile cleared.")
+        await query.message.reply_text("Please send your Steam Profile URL.")
+        return WAITING_FOR_URL
+
+    if not library:
         await query.edit_message_text("⚠️ Library data missing. Please /start again.")
         return ConversationHandler.END
 
+    # Handle Filters
     results = []
-    response_text = ""
-
+    
     if data == "short":
         results = suggest_short_games(library, max_minutes=60)
-        response_text = "⏱️ **Quick Games (Under 1 Hour):**\n"
-        
     elif data == "coop":
         results = find_coop(library)
-        response_text = "👥 **Co-op Games:**\n"
-        
     elif data == "cute":
         results = find_cute_relaxing(library)
-        response_text = "💖 **Relaxing Games:**\n"
-        
     elif data == "random":
         if library:
             results = [random.choice(library)]
-        response_text = "🎲 **Random Pick:**\n"
-        
     elif data == "analysis":
-        # Simple analysis logic
+        # Analysis doesn't use pagination logic
         total_playtime = sum(g.get('playtime_forever', 0) for g in library)
         hours = total_playtime // 60
+        most_played = max(library, key=lambda x: x.get('playtime_forever', 0))
         response_text = (
             f"📊 **Library Analysis**\n"
             f"Total Games: {len(library)}\n"
             f"Total Playtime: {hours} hours\n"
-            f"Most Played: {max(library, key=lambda x: x.get('playtime_forever', 0))['name']}"
+            f"Most Played: {most_played['name']} ({round(most_played.get('playtime_forever',0)/60, 1)} hrs)"
         )
-        # Skip the standard result loop for analysis
         keyboard = [[InlineKeyboardButton("🔙 Back to Menu", callback_data="back")]]
-        await query.edit_message_text(text=response_text, reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text(text=response_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         return MAIN_MENU
 
-    elif data == "change_profile":
-        context.user_data.clear()
-        await query.edit_message_text("⚙️ Profile cleared.")
-        # Trigger the start flow again
-        await query.message.reply_text("Please send your Steam Profile URL.")
-        return WAITING_FOR_URL
+    # Save results and reset page for pagination
+    context.user_data['current_results'] = results
+    context.user_data['current_page'] = 0
     
-    elif data == "back":
-        return await show_main_menu(update, context)
-
-    # --- Format Results ---
-    if not results:
-        response_text += "No matching games found in your library."
-    else:
-        # Take top 5
-        for game in results[:5]:
-            name = game.get('name', 'Unknown')
-            playtime = game.get('playtime_forever', 0)
-            hours = round(playtime / 60, 1)
-            response_text += f"• {name} ({hours} hrs)\n"
-
-    # Add a "Back" button
-    keyboard = [[InlineKeyboardButton("🔙 Back to Menu", callback_data="back")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(text=response_text, reply_markup=reply_markup, parse_mode='Markdown')
+    await show_results_page(update, context)
     return MAIN_MENU
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
