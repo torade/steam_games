@@ -1,101 +1,165 @@
+# gemini_chat.py
 import json
+import os
 import google.generativeai as genai
 from config_gemini import GEMINI_API_KEY, SYSTEM_PROMPT
 
 # Configure Gemini
 genai.configure(api_key=GEMINI_API_KEY)
 
-def load_library_data(cache_file="game_cache.json"):
-    """Load the Steam library data from cache"""
+
+# 1. HISTORY MANAGEMENT
+
+HISTORY_FILE = "gemini_history.json"
+
+def load_history():
+    """Load previous chat history from disk."""
+    if not os.path.exists(HISTORY_FILE):
+        return []
+
     try:
-        with open(cache_file, 'r') as f:
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    except:
+        return []
 
-def format_library_context(library_data):
-    """Format library data into a context string for Gemini"""
-    if not library_data:
-        return "No Steam library data available."
-    
-    # Create a summary
-    games_list = []
-    for appid, game_info in library_data.items():
-        name = game_info.get('name', 'Unknown')
-        genres = [g.get('description', '') for g in game_info.get('genres', [])]
-        categories = [c.get('description', '') for c in game_info.get('categories', [])]
-        
-        games_list.append({
-            'name': name,
-            'genres': genres,
-            'categories': categories
-        })
-    
-    context = f"Steam Library Summary:\n"
-    context += f"Total games: {len(games_list)}\n\n"
-    context += "Games in library:\n"
-    
-    for game in sorted(games_list, key=lambda x: x['name']):
-        context += f"- {game['name']}\n"
-        if game['genres']:
-            context += f"  Genres: {', '.join(game['genres'])}\n"
-        if game['categories']:
-            context += f"  Categories: {', '.join(game['categories'])}\n"
-    
-    return context
 
-def chat_with_gemini(library_data):
-    """Start an interactive chat session with Gemini about the Steam library"""
-    
-    # Prepare the context
-    library_context = format_library_context(library_data)
-    
-    # Initialize the model
-    model = genai.GenerativeModel('gemini-2.5-flash')
-    
-    # Start chat with context
-    full_prompt = f"{SYSTEM_PROMPT}\n\n{library_context}"
-    
-    chat = model.start_chat(history=[])
-    
-    print("\n" + "="*60)
-    print("Gemini Chat - Steam Library Assistant")
-    print("="*60)
-    print("Type 'exit' or 'quit' to end the conversation\n")
-    
-    # Send initial context as a system message
+def save_history(history):
+    """Save updated chat history to disk."""
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(history, f, indent=4)
+
+
+# 2. LIBRARY → TEXT SUMMARY (for prompt)
+
+def build_library_text(library):
+    """Convert library dict (from cache) into readable text for Gemini."""
+    if not library:
+        return "No games found."
+
+    lines = []
+    lines.append(f"Total games: {len(library)}\n")
+
+    for appid, g in library.items():
+        name = g.get("name", "Unknown")
+        genres = ", ".join(x.get("description", "") for x in g.get("genres", []))
+        categories = ", ".join(x.get("description", "") for x in g.get("categories", []))
+
+        lines.append(f"- {name}")
+        if genres:
+            lines.append(f"  Genres: {genres}")
+        if categories:
+            lines.append(f"  Categories: {categories}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+# 3. AI CHAT (with persistent memory)
+
+def ai_chat(user_message, library_data):
+    """Chat with Gemini with persistent history."""
+    history = load_history()
+
+    library_text = build_library_text(library_data)
+
+    model = genai.GenerativeModel("gemini-2.5-flash")
+    chat = model.start_chat(history=history)
+
+    # Construct AI input
+    full_prompt = (
+        SYSTEM_PROMPT
+        + "\n\nHere is the user's Steam game library:\n"
+        + library_text
+        + "\n\nUser message: "
+        + user_message
+    )
+
     response = chat.send_message(full_prompt)
-    print(f"Assistant: {response.text}\n")
-    
-    # Main chat loop
-    while True:
-        try:
-            user_input = input("You: ").strip()
-            
-            if user_input.lower() in ['exit', 'quit', 'bye']:
-                print("\nGoodbye! Happy gaming!")
-                break
-            
-            if not user_input:
-                continue
-            
-            # Send message and get response
-            response = chat.send_message(user_input)
-            print(f"\nAssistant: {response.text}\n")
-            
-        except KeyboardInterrupt:
-            print("\n\nGoodbye! Happy gaming!")
-            break
-        except Exception as e:
-            print(f"\nError: {e}")
-            print("Please try again.\n")
+    reply_text = response.text
+
+    # Update & save new history
+    history.append({"role": "user", "parts": [{"text": user_message}]})
+    history.append({"role": "model", "parts": [{"text": reply_text}]})
+    save_history(history)
+
+    return reply_text
+
+
+# 4. AI-ENHANCED LIBRARY SUMMARY (smart summary)
+def enhanced_summary(library_data):
+    """Ask Gemini to provide an intelligent summary of the user's library."""
+    library_text = build_library_text(library_data)
+
+    prompt = f"""
+You are an expert game analyst.
+
+Given this Steam library:
+
+{library_text}
+
+Please generate a **smart summary** describing:
+- The user's top genres and playstyle
+- Typical difficulty level of the games they enjoy
+- Whether they prefer solo, multiplayer, or co-op
+- What type of gamer they appear to be
+- Any patterns you notice in game selection
+
+Write it in **friendly and concise** paragraphs.
+"""
+
+    model = genai.GenerativeModel("gemini-2.5-flash")
+    response = model.generate_content(prompt)
+
+    return response.text
+
+
+# 5. AI FULL GAME REPORT (one-shot analysis)
+def ai_chat(user_message, library_data):
+    """Chat with Gemini with persistent history. """
+    history = load_history()
+
+    library_text = build_library_text(library_data)
+
+    model = genai.GenerativeModel("gemini-2.5-flash")
+    chat = model.start_chat(history=history)
+
+    full_prompt = f"""
+{SYSTEM_PROMPT}
+
+Here is the user's Steam game library:
+{library_text}
+
+IMPORTANT INSTRUCTIONS:
+- You may recommend games that are ALREADY in the user's library above.
+- You may ALSO recommend great Steam games that are NOT in the user's library yet.
+- When you recommend a game that is NOT in the library list above, add the text
+  "(not in your library yet)" after its name so the user knows it's new.
+- Focus on 3–6 strong suggestions and explain briefly why each one fits.
+
+User message: {user_message}
+"""
+
+    response = chat.send_message(full_prompt)
+    reply_text = response.text
+
+    history.append({"role": "user", "parts": [{"text": user_message}]})
+    history.append({"role": "model", "parts": [{"text": reply_text}]})
+    save_history(history)
+
+    return reply_text
+
+
+
+# 6. CLI TEST ENTRY
 
 if __name__ == "__main__":
-    # Load library data
-    library_data = load_library_data()
-    
-    if not library_data:
-        print("No Steam library data found. Please run the main script first to populate the cache.")
-    else:
-        print(f"Loaded {len(library_data)} games from your Steam library.")
-        chat_with_gemini(library_data)
+    print("Simple AI test. Type something (or 'exit' to quit).")
+    dummy_library = {}
+
+    while True:
+        msg = input("> ")
+        if msg.lower() in ("exit", "quit"):
+            break
+        reply = ai_chat(msg, dummy_library)
+        print(reply)
