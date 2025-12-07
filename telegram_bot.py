@@ -5,8 +5,8 @@ import requests
 import json
 
 # PUT YOUR API KEY HERE
-API_KEY = "AIzaSyDbABynYQi3fbeSfACCVu4OI2D1NSY3aL4"  # ← Get from: https://aistudio.google.com/app/apikey
-TOKEN = "8493785994:AAHFydSXKNj2BQ4lf_tkdTPgNmcLy48g6FM" # PUT YOUR TELEGRAM BOT TOKEN HERE
+API_KEY = "AIzaSyABiUW95vjRbw2VdHuLQoFQKACw8unicgE"  # ← Get from: https://aistudio.google.com/app/apikey
+TOKEN = "8019426767:AAH-sRlPbtgI20VgVkqnXjRrdWZPvbnVSHY" # PUT YOUR TELEGRAM BOT TOKEN HERE
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -87,7 +87,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-# The following code has been moved to the top of the file to resolve the NameError.
-# The duplicate imports and API_KEY definition have been removed.
