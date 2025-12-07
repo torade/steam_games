@@ -186,24 +186,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-        print("\n--- Recommender Demonstrations ---")
-        
-        # Convert dictionary values to a list for the recommender functions
-        games_list = list(library_data.values())
-
-
-
-        # --- NEW: Gemini Chat Option ---
-        print("\n" + "="*60)
-        gemini_response = input("Would you like to chat with Gemini about your library? (yes/no): ").strip().lower()
-        if gemini_response == 'yes':
-            try:
-                from gemini_chat import chat_with_gemini
-                chat_with_gemini(library_data)
-            except ImportError:
-                print("Gemini chat module not found. Make sure gemini_chat.py is in the same directory.")
-            except Exception as e:
-                print(f"Error starting Gemini chat: {e}")
-
-if __name__ == "__main__":
-    main()
