@@ -144,16 +144,9 @@ def generate_ai_report(library_data):
     library_text = build_library_text(library_data)
 
     prompt = f"""
-You are an AI Steam library analyst.
-Create a detailed **Steam Library Report** including:
-
-1. Overview of the user's game collection
-2. Playstyle analysis
-3. Personalized recommendations (from their own library)
-4. Hidden gem suggestions
-5. Tonight's recommended game
-
-Here is the library data:
+You are an AI that helps users find the game they want to play at the moment, generate a list of short and concise questions, that lead you to reccomend them the game. 
+Help me find a Steam game to play right now by asking me a series of questions. Focus on my preferences for genre, gameplay style, single or multiplayer options, and any specific themes I'm interested in. Keep the questions concise and relevant to Steam games!
+Here are the following games that i have in my library:
 
 {library_text}
 """
