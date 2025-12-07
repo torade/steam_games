@@ -26,3 +26,20 @@ def find_by_genre(library_data, genre_name):
         if any(genre_name.lower() in g.get('description', '').lower() for g in genres):
             results.append(game)
     return results
+
+
+def find_fps(library_data):
+    keywords = {"FPS", "Shooter", "First-Person Shooter", "First-Person"}
+    results = []
+
+    for game in library_data:
+        name = game.get("name", "")
+        genres = [g.get("description", "") for g in game.get("genres", [])]
+        desc = game.get("desc", "")
+
+        text = " ".join([name] + genres + [desc])
+
+        if any(k.lower() in text.lower() for k in keywords):
+            results.append(game)
+
+    return results
