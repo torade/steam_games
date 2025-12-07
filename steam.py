@@ -90,7 +90,9 @@ def get_game_details(appid): #steam store API is public => no key needed BUT mul
                     details = {
                         "name": game_data.get("name"),
                         "categories": game_data.get("categories", []),
-                        "genres": game_data.get("genres", [])
+                        "genres": game_data.get("genres", []),
+                        "desc": game_data.get("short_description", ""),
+                        "header_image": game_data.get("header_image")
                     }
                     
                     # 4. Save to cache
