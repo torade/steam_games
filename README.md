@@ -1,6 +1,6 @@
 # Steam Library Assistant Telegram Bot
 
-This project is a Python-based Telegram bot that acts as a personal assistant for your Steam game library. It uses the Steam Web API to fetch your games, enriches the data with details from the Steam Store, and leverages the Google Gemini API for intelligent analysis and recommendations. (**NOT WORKING YET**)
+This project is a Python-based Telegram bot that acts as a personal assistant for your Steam game library. It uses the Steam Web API to fetch your games, enriches the data with details from the Steam Store, and leverages the Google Gemini API for intelligent analysis and recommendations. 
 
 ## Features
 
