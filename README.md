@@ -8,7 +8,7 @@ This project is a Python-based Telegram bot that acts as a personal assistant fo
 - **Fetch and Cache Library**: Retrieves your entire game library, including playtime, and caches game details to speed up future requests.
 - **AI-Powered Analysis**: Uses Google Gemini to analyze your library and categorize games by playtime, providing smart insights.
 - **Advanced Filtering**:
-    - Find games playable in under an hour. **functionality not yet added**
+    - Find games playable in under an hour. 
     - Filter for Co-op, Multiplayer, or Single-player titles.
     - Discover games by genre (e.g., RPG, Horror, Relaxing).
 - **Game Recommendations**:
