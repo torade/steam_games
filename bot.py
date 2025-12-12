@@ -63,11 +63,6 @@ async def enrich_library_data(owned_games):
 def suggest_short_games(library_data, max_minutes=60):
     """Filter games with playtime under a certain limit (in minutes)."""
 
-    if( not library_data or library_data.len() == 0):
-        return []
-    
-
-
     return [
         g for g in library_data
         if g.get("playtime_forever", 0) <= max_minutes
