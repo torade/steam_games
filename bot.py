@@ -62,6 +62,12 @@ async def enrich_library_data(owned_games):
 
 def suggest_short_games(library_data, max_minutes=60):
     """Filter games with playtime under a certain limit (in minutes)."""
+
+    if( not library_data or library_data.len() == 0):
+        return []
+    
+
+
     return [
         g for g in library_data
         if g.get("playtime_forever", 0) <= max_minutes
@@ -169,6 +175,33 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return WAITING_FOR_URL
 
+
+# ---------------- Help Menu ----------------
+
+async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Display help information."""
+    help_text = (
+        "🤖 **Steam Library Assistant Help**\n\n"
+        "Use /start to begin or change your Steam profile.\n\n"
+        "Available commands:\n"
+        "/start - Start or restart the bot\n"
+        "/cancel - End the conversation\n"
+        "/help - Show this help message\n\n"
+        "In the main menu, you can filter your games by playtime, co-op availability, "
+        "genre, get random picks, or analyze your library.\n\n"
+        "You can also chat with the AI about your game library by selecting 'AI Chat' "
+        "from the menu."
+    )
+    # Send help text
+    if update.message:
+        await update.message.reply_text(help_text, parse_mode="Markdown")
+
+    # If library is already loaded, show main menu; otherwise prompt to /start
+    if "library_list" in context.user_data:
+        return await show_main_menu(update, context)
+    else:
+        await update.message.reply_text("Type /start to load your Steam profile.")
+        return WAITING_FOR_URL
 
 # ---------------- Handle URL ----------------
 
@@ -465,6 +498,13 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["current_results"] = results
         context.user_data["current_page"] = 0
         await show_results_page(update, context)
+    else:
+        await query.edit_message_text(
+            text="No matching games found in your library.",
+            reply_markup=InlineKeyboardMarkup(
+                [[InlineKeyboardButton("🔙 Back to Menu", callback_data="back")]]
+            ),
+        )
 
     return MAIN_MENU
 
@@ -482,7 +522,7 @@ def main():
     application = ApplicationBuilder().token(TOKEN).build()
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[CommandHandler("start", start), CommandHandler("help", help)],
         states={
             WAITING_FOR_URL: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_url)
@@ -496,10 +536,20 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, ai_text_handler),
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[CommandHandler("cancel", cancel), CommandHandler("start", start), CommandHandler("help", help)],
     )
 
     application.add_handler(conv_handler)
+
+    # Global fallback for plain text messages sent outside the conversation
+    async def prompt_start_or_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not update.message:
+            return
+        await update.message.reply_text(
+            "Hi! To get started please type /start to provide your Steam profile, or /help to see available commands."
+        )
+
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_start_or_help))
 
     print("Bot running…")
     application.run_polling()
