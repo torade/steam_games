@@ -2,7 +2,21 @@ import requests
 import json
 import os
 from API_keys import STEAM_API_KEY
+
 CACHE_FILE = "game_cache.json"
+STEAMSPY_APPDETAILS_URL = "https://steamspy.com/api.php"  # added
+
+def fetch_game_tags(appid):
+    """Fetch top tags for an appid using SteamSpy."""
+    params = {"request": "appdetails", "appid": appid}
+    try:
+        resp = requests.get(STEAMSPY_APPDETAILS_URL, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("tags", {}) if isinstance(data, dict) else {}
+    except requests.RequestException as e:
+        print(f"Error fetching tags for appid {appid}: {e}")
+        return {}
 
 def resolve_vanity_url(vanity_url):
     """
@@ -51,7 +65,7 @@ def get_owned_games(steam_id):
         print(f"An error occurred while fetching owned games: {e}")
         return None
 
-def get_game_details(appid): #steam store API is public => no key needed BUT multiple requests might get blocked => use caching
+def get_game_details(appid):  # steam store API is public => no key needed BUT multiple requests might get blocked => use caching
     """
     Fetches details for a specific game from the Steam Store API or local cache.
     :param appid: The Steam Application ID.
@@ -86,13 +100,16 @@ def get_game_details(appid): #steam store API is public => no key needed BUT mul
                 if app_data.get("success"):
                     game_data = app_data.get("data", {})
                     
+                    tags = fetch_game_tags(appid)  # added
+                    
                     # Extract relevant fields
                     details = {
                         "name": game_data.get("name"),
                         "categories": game_data.get("categories", []),
                         "genres": game_data.get("genres", []),
                         "desc": game_data.get("short_description", ""),
-                        "header_image": game_data.get("header_image")
+                        "header_image": game_data.get("header_image"),
+                        "tags": tags  # added
                     }
                     
                     # 4. Save to cache
