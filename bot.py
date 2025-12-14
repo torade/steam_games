@@ -1,7 +1,7 @@
+# ---------------- IMPORTS ----------------
 import logging
 import random
 import re
-
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -17,7 +17,6 @@ from telegram.ext import (
     filters,
 )
 from telegram.error import BadRequest
-
 from steam import resolve_vanity_url, get_owned_games, get_game_details
 from recommender import find_coop, find_cute_relaxing, find_by_genre, find_fps
 from gmini_chat import ai_chat
@@ -60,7 +59,7 @@ async def enrich_library_data(owned_games):
     return enriched_library
 
 
-def suggest_short_games(library_data, max_minutes=60):
+def unplayed_games(library_data, max_minutes=60):
     """Filter games with playtime under a certain limit (in minutes)."""
     return [
         g for g in library_data
@@ -134,8 +133,6 @@ async def show_results_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ----- Send ALL cover images for current page -----
     for game in current_batch:
         cover = game.get("header_image")
-        if not cover:
-            continue
 
         name = game.get("name", "Unknown")
         playtime = round(game.get("playtime_forever", 0) / 60, 1)
@@ -229,7 +226,7 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Main menu with SIX options from second version + AI Chat:
-      ⏱️ Max 1 Hour
+      ⏱️ Unplayed games
       👥 Co-op
       📂 Category / Genre
       🎲 Random Pick
@@ -239,7 +236,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     keyboard = [
         [
-            InlineKeyboardButton("⏱️ Max 1 Hour", callback_data="short"),
+            InlineKeyboardButton("⏱️ Unplayed games", callback_data="unplayed"),
             InlineKeyboardButton("👥 Co-op", callback_data="coop"),
         ],
         [
@@ -385,7 +382,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ---- Start AI Chat ----
     if data == "ai_chat":
         context.user_data["ai_mode"] = True
-        await query.edit_message_text("🤖 AI chat started! Send me a message.")
+        await query.edit_message_text("🤖 AI chat started. Ask away!")
         return AI_CHAT
 
     # If we reach here, we expect library data
@@ -398,8 +395,8 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ---- Filters ----
     results = []
 
-    if data == "short":
-        results = suggest_short_games(library_list, max_minutes=60)
+    if data == "unplayed":
+        results = unplayed_games(library_list, max_minutes=60)
 
     elif data == "coop":
         results = find_coop(library_list)
