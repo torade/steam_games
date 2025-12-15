@@ -599,19 +599,55 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             search_title = "Random Pick"
 
     elif data == "analysis":
-        # Simple stats about the library
+        # Enhanced library analysis with detailed metrics
+        total_games = len(library_list)
+        
+        # Pile of Shame: Games with 0 playtime
+        unplayed_count = sum(1 for g in library_list if g.get("playtime_forever", 0) == 0)
+        played_count = total_games - unplayed_count
+        played_percentage = (played_count / total_games * 100) if total_games > 0 else 0
+        
+        # Time Investment: Total playtime in days
         total_playtime = sum(g.get("playtime_forever", 0) for g in library_list)
-        hours = total_playtime // 60
-        most_played = max(
-            library_list, key=lambda x: x.get("playtime_forever", 0)
+        total_hours = total_playtime / 60
+        total_days = total_hours / 24
+        
+        # The Podium: Top 3 most played games
+        sorted_games = sorted(
+            library_list, 
+            key=lambda x: x.get("playtime_forever", 0), 
+            reverse=True
         )
+        medals = ["🥇", "🥈", "🥉"]
+        podium_text = ""
+        for i in range(min(3, len(sorted_games))):
+            game = sorted_games[i]
+            hours = round(game.get("playtime_forever", 0) / 60, 1)
+            podium_text += f"{medals[i]} {game['name']} ({hours} hrs)\n"
+        
+        # Habit Breakdown: Three tiers
+        hardcore = sum(1 for g in library_list if g.get("playtime_forever", 0) > 6000)
+        regular = sum(1 for g in library_list if 600 <= g.get("playtime_forever", 0) <= 6000)
+        casual = sum(1 for g in library_list if g.get("playtime_forever", 0) < 600)
+        
         response_text = (
-            f"📊 **Library Analysis**\n"
-            f"Total Games: {len(library_list)}\n"
-            f"Total Playtime: {hours} hours\n"
-            f"Most Played: {most_played['name']} "
-            f"({round(most_played.get('playtime_forever', 0) / 60, 1)} hrs)"
+            f"📊 *Library Analysis*\n\n"
+            f"*💼 The Collection*\n"
+            f"Total Games: {total_games}\n\n"
+            f"*🎮 Pile of Shame*\n"
+            f"Unplayed: {unplayed_count}\n"
+            f"Played: {played_count} ({played_percentage:.1f}%)\n\n"
+            f"*⏰ Time Investment*\n"
+            f"Total Hours: {total_hours:.1f}\n"
+            f"Total Days: {total_days:.1f}\n\n"
+            f"*🏆 The Podium*\n"
+            f"{podium_text}\n"
+            f"*📈 Habit Breakdown*\n"
+            f"Hardcore (>100 hrs): {hardcore}\n"
+            f"Regular (10-100 hrs): {regular}\n"
+            f"Casual (<10 hrs): {casual}"
         )
+        
         keyboard = [[InlineKeyboardButton("🔙 Back to Menu", callback_data="back")]]
         await query.edit_message_text(
             text=response_text,
