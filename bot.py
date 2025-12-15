@@ -347,8 +347,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Main menu with SIX options from second version + AI Chat:
       ⏱️ Unplayed games
-      👥 Co-op
-      📂 Category / Genre
+      ⏳ Short games
       🎲 Random Pick
       📊 Smart Analysis
       ⚙️ Change Profile
@@ -356,19 +355,17 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     keyboard = [
         [
-            InlineKeyboardButton("⏱️ Unplayed games", callback_data="unplayed"),
-            InlineKeyboardButton("👥 Co-op", callback_data="coop"),
-        ],
-        [
-            InlineKeyboardButton("📂 Category / Genre", callback_data="category_menu"),
-            InlineKeyboardButton("🎲 Random Pick", callback_data="random"),
+            InlineKeyboardButton("⏱️ Unplayed", callback_data="unplayed"),
+            InlineKeyboardButton("⏳ Short", callback_data="short_games"),
+            InlineKeyboardButton("🎲 Random", callback_data="random"),
+
         ],
         [
             InlineKeyboardButton("📊 Smart Analysis", callback_data="analysis"),
             InlineKeyboardButton("🤖 AI Chat", callback_data="ai_chat"),
         ],
         [
-            InlineKeyboardButton("🎛️ Advanced Filters", callback_data="advanced_filters"),
+            InlineKeyboardButton("🎛️ Categories", callback_data="categories"),
         ],
         [
             InlineKeyboardButton("⚙️ Change Profile", callback_data="change_profile"),
@@ -495,7 +492,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await show_category_menu(update, context)
 
     # ---- Multi-Filter Menu ----
-    if data == "advanced_filters":
+    if data == "categories":
         if "selected_filters" not in context.user_data:
             context.user_data["selected_filters"] = set()
         return await show_multifilter_menu(update, context)
