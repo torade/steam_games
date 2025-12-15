@@ -19,7 +19,7 @@ from telegram.ext import (
 from telegram.error import BadRequest
 from steam import resolve_vanity_url, get_owned_games, get_game_details
 from recommender import find_coop, find_cute_relaxing, find_by_genre, find_fps, find_short_games
-from gmini_chat import ai_chat
+from gemini_chat import ai_chat
 from API_keys import TELEGRAM_TOKEN
 
 # ---------------- CONFIG & STATES ----------------
