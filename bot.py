@@ -1,7 +1,7 @@
+# ---------------- IMPORTS ----------------
 import logging
 import random
 import re
-
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -17,10 +17,9 @@ from telegram.ext import (
     filters,
 )
 from telegram.error import BadRequest
-
 from steam import resolve_vanity_url, get_owned_games, get_game_details
-from recommender import find_coop, find_cute_relaxing, find_by_genre, find_fps
-from gmini_chat import ai_chat
+from recommender import find_coop, find_cute_relaxing, find_by_genre, find_fps, find_short_games
+from gemini_chat import ai_chat
 from API_keys import TELEGRAM_TOKEN
 
 # ---------------- CONFIG & STATES ----------------
@@ -55,12 +54,13 @@ async def enrich_library_data(owned_games):
             game_copy["score"] = details.get("score", "N/A")
             game_copy["desc"] = details.get("desc", "")
             game_copy["header_image"] = details.get("header_image")
+            game_copy["tags"] = details.get("tags", {})  # ADD THIS LINE - this was missing!
         enriched_library.append(game_copy)
 
     return enriched_library
 
 
-def suggest_short_games(library_data, max_minutes=60):
+def unplayed_games(library_data, max_minutes=60):
     """Filter games with playtime under a certain limit (in minutes)."""
     return [
         g for g in library_data
@@ -99,7 +99,8 @@ async def show_results_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current_batch = results[start_idx:end_idx]
 
     # ----- Text list -----
-    response_text = f"**Found {len(results)} games (Page {page + 1}/{total_pages}):**\n\n"
+    search_title = context.user_data.get("search_title", "your library")
+    response_text = f"**Found {len(results)} games (Page {page + 1}/{total_pages}) for {search_title}:**\n\n"
 
     for game in current_batch:
         name = game.get("name", "Unknown")
@@ -134,14 +135,19 @@ async def show_results_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ----- Send ALL cover images for current page -----
     for game in current_batch:
         cover = game.get("header_image")
-        if not cover:
-            continue
-
         name = game.get("name", "Unknown")
         playtime = round(game.get("playtime_forever", 0) / 60, 1)
-        caption = f"{name}\n{playtime} hrs"
 
-        await query.message.reply_photo(photo=cover, caption=caption)
+        if cover:
+            text_msg = (
+                f'<a href="{cover}">&#8203;</a>'
+                f"<b>{name}</b>\n"
+                f"{playtime} hrs"
+            )
+        else:
+            text_msg = f"<b>{name}</b>\n{playtime} hrs"
+
+        await query.message.reply_text(text=text_msg, parse_mode="HTML")
 
     # ----- Send bottom action buttons again -----
     await query.message.reply_text(
@@ -224,14 +230,131 @@ async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await show_main_menu(update, context)
 
 
+# ---------------- Multi-Filter Setup ----------------
+
+TAG_GROUPS = {
+    "btn_shooter": ["FPS", "Shooter", "Third-Person Shooter", "Hero Shooter", "Arena Shooter", "Looter Shooter", "Shoot 'Em Up", "Sniper"],
+    "btn_rpg": ["RPG", "Action RPG", "JRPG", "Strategy RPG", "Turn-Based", "Party-Based RPG", "Roguelike", "Rogue-lite"],
+    "btn_strategy": ["Strategy", "RTS", "Turn-Based Strategy", "Grand Strategy", "City Builder", "Management", "Colony Sim", "4X", "Tower Defense", "Card Game"],
+    "btn_story": ["Story Rich", "Narrative", "Visual Novel", "Choices Matter", "Interactive Fiction", "Walking Simulator", "Lore-Rich", "Atmospheric"],
+    "btn_coop": ["Co-op", "Online Co-Op", "Local Co-Op", "Multiplayer", "4 Player Local", "Split Screen"],
+    "btn_horror": ["Horror", "Survival Horror", "Psychological Horror", "Dark", "Zombies", "Gore"],
+    "btn_chill": ["Relaxing", "Cozy", "Casual", "Farming Sim", "Wholesome", "Puzzle", "Family Friendly", "Life Sim", "Simulation"],
+    "btn_action": ["Action", "Fast-Paced", "Hack and Slash", "Beat 'em up", "Fighting", "Spectacle fighter", "Platformer", "2D Platformer", "3D Platformer"],
+    "btn_openworld": ["Open World", "Open World Survival Craft", "Sandbox", "Exploration", "Survival", "Crafting"],
+    "btn_comedy": ["Comedy", "Funny", "Parody", "Memes", "Dark Humor", "Satire"],
+    "btn_scifi": ["Sci-fi", "Space", "Cyberpunk", "Futuristic", "Robots", "Mechs", "Aliens"],
+    "btn_fantasy": ["Fantasy", "Magic", "Medieval", "Dragons", "Dungeon Crawler"]
+}
+
+# Friendly labels for each filter
+FILTER_LABELS = {
+    "btn_shooter": "🔫 Shooter",
+    "btn_rpg": "⚔️ RPG",
+    "btn_strategy": "🧠 Strategy",
+    "btn_story": "📖 Story Rich",
+    "btn_coop": "👥 Co-op",
+    "btn_horror": "👻 Horror",
+    "btn_chill": "☕ Chill/Relaxing",
+    "btn_action": "💥 Action",
+    "btn_openworld": "🌍 Open World",
+    "btn_comedy": "😂 Comedy",
+    "btn_scifi": "🚀 Sci-Fi",
+    "btn_fantasy": "🐉 Fantasy",
+    "btn_unplayed": "⏱️ Unplayed"
+}
+
+def check_tags(game, allowed_tags):
+    """
+    Returns True if the game has at least one of the allowed_tags.
+    Case-insensitive comparison.
+    """
+    game_tags = game.get("tags", {})
+    if not game_tags:
+        return False
+    
+    # Convert game tags to lowercase for comparison
+    if isinstance(game_tags, dict):
+        game_tags_lower = {tag.lower() for tag in game_tags.keys()}
+    else:
+        return False
+    
+    allowed_tags_lower = {tag.lower() for tag in allowed_tags}
+    
+    # Check if there's any intersection
+    return bool(game_tags_lower & allowed_tags_lower)
+
+def filter_unplayed(library_data):
+    """Filter for unplayed games (< 60 minutes)."""
+    return [g for g in library_data if g.get("playtime_forever", 0) < 60]
+
+# Build FILTER_MAP dynamically from TAG_GROUPS
+FILTER_MAP = {
+    key: {
+        "label": FILTER_LABELS[key],
+        "func": lambda lib, tags=tags: [g for g in lib if check_tags(g, tags)]
+    }
+    for key, tags in TAG_GROUPS.items()
+}
+
+# Add manual entry for "Unplayed"
+FILTER_MAP["btn_unplayed"] = {
+    "label": FILTER_LABELS["btn_unplayed"],
+    "func": filter_unplayed
+}
+
+def apply_filters(library_list, selected_filters):
+    """Applies all selected filters sequentially (AND logic)."""
+    current_results = library_list
+    for key in selected_filters:
+        if key in FILTER_MAP:
+            filter_func = FILTER_MAP[key]["func"]
+            current_results = filter_func(current_results)
+    return current_results
+
+def get_multifilter_keyboard(selected_filters):
+    """
+    Returns an InlineKeyboardMarkup for the multi-filter menu.
+    Organizes buttons in a 2-column grid.
+    """
+    keyboard = []
+    
+    # Get all filter keys in a specific order
+    filter_keys = [
+        "btn_shooter", "btn_rpg",
+        "btn_strategy", "btn_story",
+        "btn_coop", "btn_horror",
+        "btn_chill", "btn_action",
+        "btn_openworld", "btn_comedy",
+        "btn_scifi", "btn_fantasy",
+        "btn_unplayed"
+    ]
+    
+    # Create rows of 2 buttons each
+    for i in range(0, len(filter_keys), 2):
+        row = []
+        for j in range(2):
+            if i + j < len(filter_keys):
+                key = filter_keys[i + j]
+                icon = "✅" if key in selected_filters else "⬜"
+                label = f"{icon} {FILTER_LABELS[key]}"
+                row.append(InlineKeyboardButton(label, callback_data=f"toggle_{key}"))
+        keyboard.append(row)
+    
+    # Add action buttons
+    keyboard.append([InlineKeyboardButton("🔎 Search", callback_data="search_filters")])
+    keyboard.append([InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back")])
+    
+    return InlineKeyboardMarkup(keyboard)
+
+
 # ---------------- Main Menu ----------------
 
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Main menu with SIX options from second version + AI Chat:
-      ⏱️ Max 1 Hour
-      👥 Co-op
-      📂 Category / Genre
+      ⏱️ Unplayed games
+      ⏳ Short games
       🎲 Random Pick
       📊 Smart Analysis
       ⚙️ Change Profile
@@ -239,16 +362,17 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     keyboard = [
         [
-            InlineKeyboardButton("⏱️ Max 1 Hour", callback_data="short"),
-            InlineKeyboardButton("👥 Co-op", callback_data="coop"),
-        ],
-        [
-            InlineKeyboardButton("📂 Category / Genre", callback_data="category_menu"),
-            InlineKeyboardButton("🎲 Random Pick", callback_data="random"),
+            InlineKeyboardButton("⏱️ Unplayed", callback_data="unplayed"),
+            InlineKeyboardButton("⏳ Short", callback_data="short_games"),
+            InlineKeyboardButton("🎲 Random", callback_data="random"),
+
         ],
         [
             InlineKeyboardButton("📊 Smart Analysis", callback_data="analysis"),
             InlineKeyboardButton("🤖 AI Chat", callback_data="ai_chat"),
+        ],
+        [
+            InlineKeyboardButton("🎛️ Categories", callback_data="categories"),
         ],
         [
             InlineKeyboardButton("⚙️ Change Profile", callback_data="change_profile"),
@@ -269,31 +393,30 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return MAIN_MENU
 
 
+async def show_multifilter_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Displays the multi-filter menu with checkboxes."""
+    selected = context.user_data.get("selected_filters", set())
+    
+    reply_markup = get_multifilter_keyboard(selected)
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(
+            text="Select filters to apply (AND logic):\nGames must match ALL selected filters.",
+            reply_markup=reply_markup
+        )
+    else:
+        await update.message.reply_text(
+            text="Select filters to apply (AND logic):\nGames must match ALL selected filters.",
+            reply_markup=reply_markup
+        )
+    return MAIN_MENU
+
+
 # ---------------- Category Menu ----------------
 
 async def show_category_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Big genre menu from second version."""
     keyboard = [
-        [
-            InlineKeyboardButton("🎮 Action", callback_data="cat_action"),
-            InlineKeyboardButton("🔫 FPS", callback_data="cat_fps"),
-        ],
-        [
-            InlineKeyboardButton("⚔️ RPG", callback_data="cat_rpg"),
-            InlineKeyboardButton("🧠 Strategy", callback_data="cat_strategy"),
-        ],
-        [
-            InlineKeyboardButton("🏎️ Racing", callback_data="cat_racing"),
-            InlineKeyboardButton("👾 Indie", callback_data="cat_indie"),
-        ],
-        [
-            InlineKeyboardButton("🧩 Puzzle", callback_data="cat_puzzle"),
-            InlineKeyboardButton("😱 Horror", callback_data="cat_horror"),
-        ],
-        [
-            InlineKeyboardButton("🌍 Open World", callback_data="cat_openworld"),
-            InlineKeyboardButton("🛠 Simulation", callback_data="cat_simulation"),
-        ],
         [
             InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back"),
         ],
@@ -375,6 +498,69 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "category_menu":
         return await show_category_menu(update, context)
 
+    # ---- Short Games ----
+    if data == "short_games":
+        results = find_short_games(library_list)
+        search_title = "Short Games"
+        
+        if results:
+            context.user_data["current_results"] = results
+            context.user_data["current_page"] = 0
+            context.user_data["search_title"] = search_title
+            await show_results_page(update, context)
+        else:
+            await query.edit_message_text(
+                text="No short games found in your library.",
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("🔙 Back to Menu", callback_data="back")]]
+                ),
+            )
+        return MAIN_MENU
+        
+    # ---- Multi-Filter Menu ----
+    if data == "categories":
+        if "selected_filters" not in context.user_data:
+            context.user_data["selected_filters"] = set()
+        return await show_multifilter_menu(update, context)
+
+    if data.startswith("toggle_"):
+        key = data.replace("toggle_", "")
+        selected = context.user_data.get("selected_filters", set())
+
+        if key in selected:
+            selected.remove(key)
+        else:
+            selected.add(key)
+
+        context.user_data["selected_filters"] = selected
+        return await show_multifilter_menu(update, context)
+
+    if data == "search_filters":
+        selected = context.user_data.get("selected_filters", set())
+        results = apply_filters(library_list, selected)
+        
+        # Create a title from selected filters
+        if selected:
+            filter_labels = [FILTER_MAP[k]["label"] for k in selected if k in FILTER_MAP]
+            search_title = " + ".join(filter_labels)
+        else:
+            search_title = "All Games"
+
+        context.user_data["search_title"] = search_title
+
+        if results:
+            context.user_data["current_results"] = results
+            context.user_data["current_page"] = 0
+            await show_results_page(update, context)
+        else:
+            await query.edit_message_text(
+                text="No games found matching ALL selected filters.",
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("🔙 Back to Filters", callback_data="advanced_filters")]]
+                ),
+            )
+        return MAIN_MENU
+
     # ---- Change Profile ----
     if data == "change_profile":
         context.user_data.clear()
@@ -385,7 +571,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ---- Start AI Chat ----
     if data == "ai_chat":
         context.user_data["ai_mode"] = True
-        await query.edit_message_text("🤖 AI chat started! Send me a message.")
+        await query.edit_message_text("🤖 AI chat started. Ask away!")
         return AI_CHAT
 
     # If we reach here, we expect library data
@@ -397,61 +583,71 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ---- Filters ----
     results = []
+    search_title = "your selection"
 
-    if data == "short":
-        results = suggest_short_games(library_list, max_minutes=60)
+    if data == "unplayed":
+        results = unplayed_games(library_list, max_minutes=60)
+        search_title = "Unplayed Games"
 
     elif data == "coop":
         results = find_coop(library_list)
-
-    elif data == "cat_action":
-        results = find_by_genre(library_list, "Action")
-
-    elif data == "cat_fps":
-        results = find_fps(library_list)
-
-    elif data == "cat_rpg":
-        results = find_by_genre(library_list, "RPG")
-
-    elif data == "cat_strategy":
-        results = find_by_genre(library_list, "Strategy")
-
-    elif data == "cat_racing":
-        results = find_by_genre(library_list, "Racing")
-
-    elif data == "cat_indie":
-        results = find_by_genre(library_list, "Indie")
-
-    elif data == "cat_puzzle":
-        results = find_by_genre(library_list, "Puzzle")
-
-    elif data == "cat_horror":
-        results = find_by_genre(library_list, "Horror")
-
-    elif data == "cat_openworld":
-        results = find_by_genre(library_list, "Open World")
-
-    elif data == "cat_simulation":
-        results = find_by_genre(library_list, "Simulation")
+        search_title = "Co-op Games"
 
     elif data == "random":
         if library_list:
             results = [random.choice(library_list)]
+            search_title = "Random Pick"
 
     elif data == "analysis":
-        # Simple stats about the library
+        # Enhanced library analysis with detailed metrics
+        total_games = len(library_list)
+        
+        # Pile of Shame: Games with 0 playtime
+        unplayed_count = sum(1 for g in library_list if g.get("playtime_forever", 0) == 0)
+        played_count = total_games - unplayed_count
+        played_percentage = (played_count / total_games * 100) if total_games > 0 else 0
+        
+        # Time Investment: Total playtime in days
         total_playtime = sum(g.get("playtime_forever", 0) for g in library_list)
-        hours = total_playtime // 60
-        most_played = max(
-            library_list, key=lambda x: x.get("playtime_forever", 0)
+        total_hours = total_playtime / 60
+        total_days = total_hours / 24
+        
+        # The Podium: Top 3 most played games
+        sorted_games = sorted(
+            library_list, 
+            key=lambda x: x.get("playtime_forever", 0), 
+            reverse=True
         )
+        medals = ["🥇", "🥈", "🥉"]
+        podium_text = ""
+        for i in range(min(3, len(sorted_games))):
+            game = sorted_games[i]
+            hours = round(game.get("playtime_forever", 0) / 60, 1)
+            podium_text += f"{medals[i]} {game['name']} ({hours} hrs)\n"
+        
+        # Habit Breakdown: Three tiers
+        hardcore = sum(1 for g in library_list if g.get("playtime_forever", 0) > 6000)
+        regular = sum(1 for g in library_list if 600 <= g.get("playtime_forever", 0) <= 6000)
+        casual = sum(1 for g in library_list if g.get("playtime_forever", 0) < 600)
+        
         response_text = (
-            f"📊 **Library Analysis**\n"
-            f"Total Games: {len(library_list)}\n"
-            f"Total Playtime: {hours} hours\n"
-            f"Most Played: {most_played['name']} "
-            f"({round(most_played.get('playtime_forever', 0) / 60, 1)} hrs)"
+            f"📊 *Library Analysis*\n\n"
+            f"*💼 The Collection*\n"
+            f"Total Games: {total_games}\n\n"
+            f"*🎮 Pile of Shame*\n"
+            f"Unplayed: {unplayed_count}\n"
+            f"Played: {played_count} ({played_percentage:.1f}%)\n\n"
+            f"*⏰ Time Investment*\n"
+            f"Total Hours: {total_hours:.1f}\n"
+            f"Total Days: {total_days:.1f}\n\n"
+            f"*🏆 The Podium*\n"
+            f"{podium_text}\n"
+            f"*📈 Habit Breakdown*\n"
+            f"Hardcore (>100 hrs): {hardcore}\n"
+            f"Regular (10-100 hrs): {regular}\n"
+            f"Casual (<10 hrs): {casual}"
         )
+        
         keyboard = [[InlineKeyboardButton("🔙 Back to Menu", callback_data="back")]]
         await query.edit_message_text(
             text=response_text,
@@ -464,6 +660,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if results:
         context.user_data["current_results"] = results
         context.user_data["current_page"] = 0
+        context.user_data["search_title"] = search_title
         await show_results_page(update, context)
 
     return MAIN_MENU

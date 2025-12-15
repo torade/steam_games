@@ -1,19 +1,44 @@
 # Steam Library Assistant Telegram Bot
 
-This project is a Python-based Telegram bot that acts as a personal assistant for your Steam game library. It uses the Steam Web API to fetch your games, enriches the data with details from the Steam Store, and leverages the Google Gemini API for intelligent analysis and recommendations. 
+This Telegram Bot acts as an assistant who recommends video games to you, based on your Steam library.
 
 ## Features
 
 - **Connect Your Steam Account**: Simply provide your public Steam profile URL to get started.
 - **Fetch and Cache Library**: Retrieves your entire game library, including playtime, and caches game details to speed up future requests.
-- **AI-Powered Analysis**: Uses Google Gemini to analyze your library and categorize games by playtime, providing smart insights.
-- **Advanced Filtering**:
-    - Find games playable in under an hour. 
-    - Filter for Co-op, Multiplayer, or Single-player titles.
-    - Discover games by genre (e.g., RPG, Horror, Relaxing).
-- **Game Recommendations**:
-    - Get a random game suggestion from your library.
-    - View a short analysis of your library, including total playtime and your most-played game.
+- **AI-Powered Suggestions**: The bot has an option for chatting with AI, where it can give suggestions both based on owned and unowned games. It can understand more complex filters than the ones integrated into the "Categories" section and give more accurate recommendations (based on preference description).
+- **Filters and options**:
+    - Find unplayed games (less than 1 hour playtime)
+    - Find short games: games where progress can be saved at any time
+    - Randomly pick a game from the library
+    - Smart Analysis: provide insight into the user's playing trends
+    - AI Chat: use natural language to discuss about games and preferences
+    - Categories: multi/single filtering options for game genres/categories/tags
+    <table>
+  <tr>
+    <td valign="top">
+      <ul>
+        <li>Shooter</li>
+        <li>RPG</li>
+        <li>Strategy</li>
+        <li>Story Rich</li>
+        <li>Co-Op</li>
+        <li>Horror</li>
+      </ul>
+    </td>
+    <td valign="top">
+      <ul>
+        <li>Chill/Relaxing</li>
+        <li>Action</li>
+        <li>Open World</li>
+        <li>Comedy</li>
+        <li>Sci-Fi</li>
+        <li>Fantasy</li>
+      </ul>
+    </td>
+  </tr>
+</table>
+
 - **Interactive UI**: A clean, menu-driven interface using Telegram's inline keyboards.
 - **Profile Management**: Easily switch between different Steam profiles.
 
@@ -21,8 +46,8 @@ This project is a Python-based Telegram bot that acts as a personal assistant fo
 
 - **Bot Framework**: The bot is built using the `python-telegram-bot` library, managing user states and interactions through a `ConversationHandler`.
 - **Steam Integration**: The [`steam.py`](steam.py) module handles all communication with the Steam Web API. It resolves vanity URLs, fetches owned games, and retrieves detailed game information like genres and categories.
-- **AI Enrichment**: [`gemini_chat.py`](gemini_chat.py) integrates with the Google Gemini API. It takes the user's library, sends it to the AI for analysis, and adds time-based categories to each game. This process runs asynchronously to avoid blocking the bot.
-- **Recommender Logic**: The [`recommender.py`](recommender.py) module contains various filter functions that power the bot's search capabilities.
+- **AI Enrichment**: [`gemini_chat.py`](gemini_chat.py) integrates with the Google Gemini API. It takes the user's library, sends it to the AI for analysis. This process runs asynchronously to avoid blocking the bot.
+- **Recommender Logic**: The [`recommender.py`](recommender.py) module contains the various filter functions used to suggest games.
 
 ## Setup and Installation
 
@@ -52,7 +77,6 @@ This project is a Python-based Telegram bot that acts as a personal assistant fo
 3.  **Configure API Keys**
     Create a file named `API_keys.py` in the root directory and add your keys:
     ```python
-    # filepath: API_keys.py
     # Get from BotFather on Telegram
     TELEGRAM_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 
@@ -62,13 +86,17 @@ This project is a Python-based Telegram bot that acts as a personal assistant fo
     # Get from https://aistudio.google.com/app/apikey
     GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"
     ```
-    **Important**: Add `API_keys.py` to your `.gitignore` file to keep your keys private.
 
 4.  **Run the Bot**
     Execute the `bot.py` script to start the bot.
     ```sh
     python bot.py
     ```
+
+5.  **Extra**
+    For development:
+    - Add `API_keys.py` to your `.gitignore` file to keep your keys private.
+    - The bot saves `game_cache.json` and `gemini_history.json` files locally. It is recommended to also add those to `.gitignore`
 
 ## Usage
 
