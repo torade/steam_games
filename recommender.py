@@ -238,3 +238,24 @@ def find_by_multiple_tags(library_list, tags, match_all=False):
     else:
         # Game needs at least one tag (OR logic)
         return [game for game in library_list if check_tags(game, tags)]
+
+
+def find_short_games(library_list):
+    """
+    Find short games using 'Save Anytime' category and 'short' tag.
+    
+    Args:
+        library_list: List of game dictionaries
+    
+    Returns:
+        list: Filtered list of short games
+    """
+    short_tags = ["Short", "Quick"]
+    short_categories = ["Save Anytime"]
+    
+    results = []
+    for game in library_list:
+        if check_tags(game, short_tags) or check_categories(game, short_categories):
+            results.append(game)
+    
+    return results

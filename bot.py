@@ -18,7 +18,7 @@ from telegram.ext import (
 )
 from telegram.error import BadRequest
 from steam import resolve_vanity_url, get_owned_games, get_game_details
-from recommender import find_coop, find_cute_relaxing, find_by_genre, find_fps
+from recommender import find_coop, find_cute_relaxing, find_by_genre, find_fps, find_short_games
 from gmini_chat import ai_chat
 from API_keys import TELEGRAM_TOKEN
 
@@ -135,12 +135,19 @@ async def show_results_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ----- Send ALL cover images for current page -----
     for game in current_batch:
         cover = game.get("header_image")
-
         name = game.get("name", "Unknown")
         playtime = round(game.get("playtime_forever", 0) / 60, 1)
-        caption = f"{name}\n{playtime} hrs"
 
-        await query.message.reply_photo(photo=cover, caption=caption)
+        if cover:
+            text_msg = (
+                f'<a href="{cover}">&#8203;</a>'
+                f"<b>{name}</b>\n"
+                f"{playtime} hrs"
+            )
+        else:
+            text_msg = f"<b>{name}</b>\n{playtime} hrs"
+
+        await query.message.reply_text(text=text_msg, parse_mode="HTML")
 
     # ----- Send bottom action buttons again -----
     await query.message.reply_text(
@@ -491,6 +498,25 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "category_menu":
         return await show_category_menu(update, context)
 
+    # ---- Short Games ----
+    if data == "short_games":
+        results = find_short_games(library_list)
+        search_title = "Short Games"
+        
+        if results:
+            context.user_data["current_results"] = results
+            context.user_data["current_page"] = 0
+            context.user_data["search_title"] = search_title
+            await show_results_page(update, context)
+        else:
+            await query.edit_message_text(
+                text="No short games found in your library.",
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton("🔙 Back to Menu", callback_data="back")]]
+                ),
+            )
+        return MAIN_MENU
+        
     # ---- Multi-Filter Menu ----
     if data == "categories":
         if "selected_filters" not in context.user_data:
