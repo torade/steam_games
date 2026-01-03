@@ -176,6 +176,33 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return WAITING_FOR_URL
 
 
+# ---------------- /help ----------------
+
+async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Display help information."""
+    help_text = (
+        "🤖 **Steam Library Assistant Help**\n\n"
+        "Use /start to begin or change your Steam profile.\n\n"
+        "Available commands:\n"
+        "/start - Start or restart the bot\n"
+        "/cancel - End the conversation\n"
+        "/help - Show this help message\n\n"
+        "In the main menu, you can filter your games by playtime, co-op availability, "
+        "genre, get random picks, or analyze your library.\n\n"
+        "You can also chat with the AI about your game library by selecting 'AI Chat' "
+        "from the menu."
+    )
+    # Send help text
+    if update.message:
+        await update.message.reply_text(help_text, parse_mode="Markdown")
+
+    # If library is already loaded, show main menu; otherwise prompt to /start
+    if "library_list" in context.user_data:
+        return await show_main_menu(update, context)
+    else:
+        await update.message.reply_text("Type /start to load your Steam profile.")
+        return WAITING_FOR_URL
+
 # ---------------- Handle URL ----------------
 
 async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
