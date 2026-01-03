@@ -706,7 +706,7 @@ def main():
     application = ApplicationBuilder().token(TOKEN).build()
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[CommandHandler("start", start), CommandHandler("help", help)],
         states={
             WAITING_FOR_URL: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_url)
@@ -720,7 +720,7 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, ai_text_handler),
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[CommandHandler("cancel", cancel), CommandHandler("start", start), CommandHandler("help", help)],
     )
 
     application.add_handler(conv_handler)
