@@ -723,7 +723,18 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel), CommandHandler("start", start), CommandHandler("help", help)],
     )
 
+
     application.add_handler(conv_handler)
+
+    async def prompt_start_or_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not update.message:
+            return
+        await update.message.reply_text(
+            "Hi! To get started please type /start to provide your Steam profile, or /help to see available commands."
+        )
+
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_start_or_help))
+
 
     print("Bot running…")
     application.run_polling()
