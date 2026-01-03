@@ -583,7 +583,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(
                 text="No games found matching ALL selected filters.",
                 reply_markup=InlineKeyboardMarkup(
-                    [[InlineKeyboardButton("🔙 Back to Filters", callback_data="advanced_filters")]]
+                    [[InlineKeyboardButton("🔙 Back to Filters", callback_data="categories")]]
                 ),
             )
         return MAIN_MENU
