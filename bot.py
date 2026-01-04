@@ -804,7 +804,7 @@ def main():
         if not text.startswith("/"):
             return
 
-        cmd = text.split()[0].lstrip('/').split('@')[0].lower()
+        cmd = text.split()[0].lstrip('/').lower()
 
         known_commands = {"start", "help", "cancel"}
         if cmd in known_commands:
