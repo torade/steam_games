@@ -158,7 +158,12 @@ async def show_results_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------- /start ----------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Entry point: ask for Steam profile URL, or go straight to menu if we already know this user."""
+    """Entry point: ask for Steam profile URL, or go straight to menu if we already know this user.
+
+    If an argument is provided with the command (e.g., `/start BAILOPANN`),
+    attempt to resolve that argument as a vanity name or profile URL and
+    fetch the library immediately.
+    """
     user = update.effective_user
 
     # If library already loaded, jump back to menu
@@ -166,6 +171,63 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Welcome back, {user.first_name}!")
         return await show_main_menu(update, context)
 
+    # If user passed an argument with /start (e.g., /start BAILOPANN), try to fetch immediately
+    args = getattr(context, "args", []) or []
+    if args:
+        arg_text = " ".join(args).strip()
+
+        await update.message.reply_text(
+            f"Looking up Steam profile for '{arg_text}'..."
+        )
+
+        # Reuse the same resolution logic from handle_url
+        vanity_match = re.search(r"steamcommunity.com/id/([^/]+)", arg_text)
+        profile_match = re.search(r"steamcommunity.com/profiles/(\d+)", arg_text)
+
+        steam_id = None
+        if vanity_match:
+            steam_id = resolve_vanity_url(vanity_match.group(1))
+        elif profile_match:
+            steam_id = profile_match.group(1)
+        else:
+            # Try resolving raw text as a vanity name or numeric id
+            steam_id = resolve_vanity_url(arg_text)
+
+        if not steam_id:
+            await update.message.reply_text(
+                "❌ I couldn't resolve that argument to a Steam ID.\n"
+                "Please make sure it's a valid vanity name or public profile URL."
+            )
+            return WAITING_FOR_URL
+
+        await update.message.reply_text(
+            "✅ Found profile! Fetching your library... (this might take a moment)"
+        )
+
+        games = get_owned_games(steam_id)
+        if not games:
+            await update.message.reply_text(
+                "❌ I couldn't find any games. Make sure the profile is public."
+            )
+            return WAITING_FOR_URL
+
+        library_list = await enrich_library_data(games)
+
+        # Build dict for AI chat (appid -> game)
+        library_dict = {str(g["appid"]): g for g in library_list}
+
+        # Save to context
+        context.user_data["steam_id"] = steam_id
+        context.user_data["library_list"] = library_list
+        context.user_data["library_dict"] = library_dict
+        context.user_data["ai_mode"] = False
+
+        await update.message.reply_text(
+            f"📚 Successfully loaded {len(library_list)} games!"
+        )
+        return await show_main_menu(update, context)
+
+    # Default: ask user for their Steam profile URL
     await update.message.reply_text(
         f"Hi {user.first_name}! I'm your Steam Library Assistant.\n\n"
         "To get started, please send me your **Steam Profile URL**.\n"
@@ -181,9 +243,9 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Display help information."""
     help_text = (
         "🤖 **Steam Library Assistant Help**\n\n"
-        "Use /start to begin or change your Steam profile.\n\n"
+        "Use /start {your username} to begin or change your Steam profile.\n\n"
         "Available commands:\n"
-        "/start - Start or restart the bot\n"
+        "/start {your username} - Start or restart the bot\n"
         "/cancel - End the conversation\n"
         "/help - Show this help message\n\n"
         "In the main menu, you can filter your games by playtime, co-op availability, "
@@ -294,23 +356,22 @@ FILTER_LABELS = {
 def check_tags(game, allowed_tags):
     """
     Returns True if the game has at least one of the allowed_tags.
-    Fetches tags from SteamSpy if they are missing from the game object.
+    Case-insensitive comparison.
     """
-    appid = game.get("appid")
     game_tags = game.get("tags", {})
-
-    if not game_tags and appid:
-        game_tags = fetch_game_tags(appid)
-        game["tags"] = game_tags
-
     if not game_tags:
         return False
     
-    game_tags_lower = {tag.lower() for tag in game_tags.keys()}
+    # Convert game tags to lowercase for comparison
+    if isinstance(game_tags, dict):
+        game_tags_lower = {tag.lower() for tag in game_tags.keys()}
+    else:
+        return False
+    
     allowed_tags_lower = {tag.lower() for tag in allowed_tags}
     
-    has_match = bool(game_tags_lower & allowed_tags_lower)
-    return has_match
+    # Check if there's any intersection
+    return bool(game_tags_lower & allowed_tags_lower)
 
 def filter_unplayed(library_data):
     """Filter for unplayed games (< 60 minutes)."""
@@ -335,13 +396,8 @@ def apply_filters(library_list, selected_filters):
     """Applies all selected filters sequentially (AND logic)."""
     current_results = library_list
     for key in selected_filters:
-        #print(f"Applying filter: {key}")
-        #print(FILTER_MAP[key]["func"])
-        #for key, tags in TAG_GROUPS.items():
-            #print(f"{key}: {tags}")
         if key in FILTER_MAP:
             filter_func = FILTER_MAP[key]["func"]
-        #print(filter_func)
             current_results = filter_func(current_results)
     return current_results
 
