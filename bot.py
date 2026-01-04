@@ -17,7 +17,7 @@ from telegram.ext import (
     filters,
 )
 from telegram.error import BadRequest
-from steam import resolve_vanity_url, get_owned_games, get_game_details
+from steam import resolve_vanity_url, get_owned_games, get_game_details, fetch_game_tags
 from recommender import find_coop, find_cute_relaxing, find_by_genre, find_fps, find_short_games
 from gemini_chat import ai_chat
 from API_keys import TELEGRAM_TOKEN
@@ -45,7 +45,6 @@ async def enrich_library_data(owned_games):
     for game in owned_games:
         appid = game.get("appid")
         details = get_game_details(appid)  # uses local cache logic
-
         game_copy = game.copy()
         if details:
             game_copy["categories"] = details.get("categories", [])
@@ -291,25 +290,27 @@ FILTER_LABELS = {
     "btn_unplayed": "⏱️ Unplayed"
 }
 
+
 def check_tags(game, allowed_tags):
     """
     Returns True if the game has at least one of the allowed_tags.
-    Case-insensitive comparison.
+    Fetches tags from SteamSpy if they are missing from the game object.
     """
+    appid = game.get("appid")
     game_tags = game.get("tags", {})
+
+    if not game_tags and appid:
+        game_tags = fetch_game_tags(appid)
+        game["tags"] = game_tags
+
     if not game_tags:
         return False
     
-    # Convert game tags to lowercase for comparison
-    if isinstance(game_tags, dict):
-        game_tags_lower = {tag.lower() for tag in game_tags.keys()}
-    else:
-        return False
-    
+    game_tags_lower = {tag.lower() for tag in game_tags.keys()}
     allowed_tags_lower = {tag.lower() for tag in allowed_tags}
     
-    # Check if there's any intersection
-    return bool(game_tags_lower & allowed_tags_lower)
+    has_match = bool(game_tags_lower & allowed_tags_lower)
+    return has_match
 
 def filter_unplayed(library_data):
     """Filter for unplayed games (< 60 minutes)."""
@@ -334,8 +335,13 @@ def apply_filters(library_list, selected_filters):
     """Applies all selected filters sequentially (AND logic)."""
     current_results = library_list
     for key in selected_filters:
+        #print(f"Applying filter: {key}")
+        #print(FILTER_MAP[key]["func"])
+        #for key, tags in TAG_GROUPS.items():
+            #print(f"{key}: {tags}")
         if key in FILTER_MAP:
             filter_func = FILTER_MAP[key]["func"]
+        #print(filter_func)
             current_results = filter_func(current_results)
     return current_results
 

@@ -101,7 +101,6 @@ def get_game_details(appid):  # steam store API is public => no key needed BUT m
                     game_data = app_data.get("data", {})
                     
                     tags = fetch_game_tags(appid)  # added
-                    
                     # Extract relevant fields
                     details = {
                         "name": game_data.get("name"),
