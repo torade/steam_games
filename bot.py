@@ -788,12 +788,31 @@ def main():
 
     application.add_handler(conv_handler)
 
+    # Central prompt message used for unknown commands and general guidance
+    PROMPT_START_HELP = "Hi! To get started please type /start to provide your Steam profile, or /help to see available commands."
+
     async def prompt_start_or_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not update.message:
             return
-        await update.message.reply_text(
-            "Hi! To get started please type /start to provide your Steam profile, or /help to see available commands."
-        )
+        await update.message.reply_text(PROMPT_START_HELP)
+
+    async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Catch-all handler for unknown commands (e.g., /sda)."""
+        if not update.message:
+            return
+        text = (update.message.text or "").strip()
+        if not text.startswith("/"):
+            return
+
+        cmd = text.split()[0].lstrip('/').split('@')[0].lower()
+
+        known_commands = {"start", "help", "cancel"}
+        if cmd in known_commands:
+            return
+        await update.message.reply_text(PROMPT_START_HELP)
+
+
+    application.add_handler(MessageHandler(filters.COMMAND, unknown_command))
 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_start_or_help))
 
