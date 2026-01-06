@@ -1,14 +1,5 @@
-<h1 align="center">Steam Library Assistant Telegram Bot</h1>
-
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/412bb763-96e2-4e35-a697-914ee28a8200" width="70">
-</p>
-
-<p align="center">
-  A Telegram bot that recommends what to play next based on your Steam library.
-</p>
-
----
+# Steam Library Assistant Telegram Bot 
+This Telegram Bot acts as an assistant who recommends video games to you, based on your Steam library.
 
 
 
