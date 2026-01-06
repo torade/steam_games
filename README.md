@@ -1,6 +1,7 @@
-# Steam Library Assistant Telegram Bot
-
+# Steam Library Assistant Telegram Bot 
 This Telegram Bot acts as an assistant who recommends video games to you, based on your Steam library.
+
+
 
 ## Features
 
