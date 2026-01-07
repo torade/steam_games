@@ -243,7 +243,7 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Display help information."""
     help_text = (
         "🤖 **Steam Library Assistant Help**\n\n"
-        "Use /start {your custom URL} to begin or change your Steam profile.\n\n"
+        "Use /start {your custom URL} or {your Steam profile} to begin or change your Steam profile.\n\n"
         "Available commands:\n"
         "/start {your custom URL} - Start or restart the bot\n"
         "/cancel - End the conversation\n"
