@@ -55,35 +55,7 @@ def build_library_text(library):
     return "\n".join(lines)
 
 
-# 3. AI CHAT (with persistent memory)
 
-def ai_chat(user_message, library_data):
-    """Chat with Gemini with persistent history."""
-    history = load_history()
-
-    library_text = build_library_text(library_data)
-
-    model = genai.GenerativeModel("gemini-2.5-flash")
-    chat = model.start_chat(history=history)
-
-    # Construct AI input
-    full_prompt = (
-        SYSTEM_PROMPT
-        + "\n\nHere is the user's Steam game library:\n"
-        + library_text
-        + "\n\nUser message: "
-        + user_message
-    )
-
-    response = chat.send_message(full_prompt)
-    reply_text = response.text
-
-    # Update & save new history
-    history.append({"role": "user", "parts": [{"text": user_message}]})
-    history.append({"role": "model", "parts": [{"text": reply_text}]})
-    save_history(history)
-
-    return reply_text
 
 
 # 4. AI-ENHANCED LIBRARY SUMMARY (smart summary)
